@@ -1,2 +1,2 @@
 # Permission-handling-in-Jetpack-Compose
-An Android project which show how to request and get permission in jetpack Compose.
+A simple app to demonstrate fetching of location using GPS with the help of FusedLocationProvider in Jetpack Compose. Permission is requested and managed using accompanist-permissions.
