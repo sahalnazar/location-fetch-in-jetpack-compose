@@ -3,8 +3,11 @@ package com.sahalnazar.permissionhandlinginjetpackcompose
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.location.Location
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -14,7 +17,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
@@ -25,12 +27,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.core.content.ContextCompat.startActivity
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.MultiplePermissionsState
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -41,6 +41,7 @@ import com.google.android.gms.location.LocationServices
 import com.sahalnazar.permissionhandlinginjetpackcompose.ui.theme.PermissionHandlingInJetpackComposeTheme
 import com.sahalnazar.permissionhandlinginjetpackcompose.utils.LocationUtils.createLocationRequest
 import com.sahalnazar.permissionhandlinginjetpackcompose.utils.LocationUtils.fetchLastLocation
+
 
 class MainActivity : ComponentActivity() {
 
@@ -67,9 +68,7 @@ class MainActivity : ComponentActivity() {
                     object : LocationCallback() {
                         override fun onLocationResult(locationResult: LocationResult) {
                             Log.d("onLocationResult", "locationResult.latitude: ${locationResult.lastLocation?.latitude}")
-                            if (locationFromGps == null && locationFromGps != locationResult.lastLocation) {
-                                locationFromGps = locationResult.lastLocation
-                            }
+                            locationFromGps = locationResult.lastLocation
                         }
                     }
                 }
@@ -98,43 +97,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
-
-                val requestPermissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions(),
-                    onResult = {
-                        context.fetchLastLocation(
-                            fusedLocationClient = fusedLocationProviderClient,
-                            settingsLauncher = settingsLauncher,
-                            location = {
-                                Log.d("settingsLauncher", "location: ${it.latitude}")
-                                if (locationFromGps == null && locationFromGps != it) {
-                                    locationFromGps = it
-                                }
-                            },
-                            locationCallback = locationCallback
-                        )
-                    }
-                )
-
-                Log.d("", "locationPermissionsState: $locationPermissionsState")
-
-//                val lifecycleOwner = LocalLifecycleOwner.current
-//
-//                DisposableEffect(key1 = lifecycleOwner, effect = {
-//                    val observer = LifecycleEventObserver { _, event ->
-//                        when (event) {
-//                            Lifecycle.Event.ON_START -> {
-//                                locationPermissionsState.launchMultiplePermissionRequest()
-//                            }
-//                            else -> {}
-//                        }
-//                    }
-//                    lifecycleOwner.lifecycle.addObserver(observer)
-//
-//                    onDispose {
-//                        lifecycleOwner.lifecycle.removeObserver(observer)
-//                    }
-//                })
 
                 LaunchedEffect(
                     key1 = locationPermissionsState.revokedPermissions.size,
@@ -176,9 +138,13 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
                         Text(text = "Has permission: ${locationPermissionsState.revokedPermissions.size <= 1}")
-                        Text(text = "Current location: ${locationFromGps?.latitude}")
+                        Text(text = "Current latitude: ${locationFromGps?.latitude}")
+                        Text(text = "Current longitude: ${locationFromGps?.longitude}")
                         Button(onClick = {
-                            if (locationPermissionsState.revokedPermissions.size == 2 && !locationPermissionsState.shouldShowRationale) {
+                            if (
+                                locationPermissionsState.revokedPermissions.size == 2
+                                && !locationPermissionsState.shouldShowRationale
+                            ) {
                                 openDialog = "Permission fully denied. Go to settings to enable"
                                 Log.d("LaunchedEffect", "revokedPermissions.size == 2 && shouldShowRationale")
                             } else {
@@ -210,9 +176,6 @@ class MainActivity : ComponentActivity() {
                     ) {
                         NoPermissionDialog(
                             message = openDialog,
-                            closeDialog = {
-                                openDialog = ""
-                            },
                             reqPermission = {
                                 locationPermissionsState.launchMultiplePermissionRequest()
                                 openDialog = ""
@@ -262,12 +225,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun NoPermissionDialog(closeDialog: () -> Unit, reqPermission: () -> Unit, message: String) {
+fun NoPermissionDialog(reqPermission: () -> Unit, message: String) {
     Card(
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.padding(10.dp, 5.dp, 10.dp, 10.dp),
         elevation = 8.dp
     ) {
+        val context = LocalContext.current
+
         Column(
             Modifier.padding(16.dp)
         ) {
@@ -276,9 +241,22 @@ fun NoPermissionDialog(closeDialog: () -> Unit, reqPermission: () -> Unit, messa
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.align(Alignment.End)) {
 
                 Button(onClick = {
-                    reqPermission()
+                    if (message == "Permission fully denied. Go to settings to enable") {
+                        try {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:" + BuildConfig.APPLICATION_ID)
+                                )
+                            )
+                        } catch (e: Exception) {
+                            Log.e("NoPermissionDialog", "e:: $e")
+                        }
+                    } else {
+                        reqPermission()
+                    }
                 }) {
-                    Text(text = "Allow")
+                    Text(text = if (message == "Permission fully denied. Go to settings to enable") "Go to settings" else "Allow")
                 }
 
             }
